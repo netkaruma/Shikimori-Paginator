@@ -3,9 +3,12 @@
 // @namespace    http://tampermonkey.net/
 // @version      1.1
 // @description  Пагинация комментариев
-// @author       YourName
+// @author       karuma
+// @license      MIT
 // @match        https://shikimori.one/*
 // @grant        GM_addStyle
+// @downloadURL https://update.greasyfork.org/scripts/534577/Shikimori%20Comments%20Pagination.user.js
+// @updateURL https://update.greasyfork.org/scripts/534577/Shikimori%20Comments%20Pagination.meta.js
 // ==/UserScript==
 
 (function () {
@@ -860,27 +863,26 @@
         constructor(container) {
             // Инициализация свойств
             this.container = container; // DOM-элемент контейнера
-            this.loader = container.querySelector('.comments-loader'); // Элемент загрузки
-            this.fetchId = null; // ID для запросов
-            this.topicId = null; // ID темы
-            this.currentPage = 1; // Текущая страница
-            this.totalPages = 1; // Всего страниц
-            this.pagination = null; // Элемент пагинации
+            this.loader = container.querySelector('.comments-loader');// Элемент загрузки
+            this.fetchId = null;// ID для запросов
+            this.entityId = null; // Может быть topicId или userId
+            this.entityType = null; // 'Topic' или 'User'
+            this.currentPage = 1;// Текущая страница
+            this.totalPages = 1;// Всего страниц
+            this.pagination = null;// Элемент пагинации
 
             this.init();
         }
-
         // Основная инициализация
         init() {
             if (!this.loader) return;
 
-            // Получаем ID из data-атрибутов
             const ids = this.getCommentsIDs();
             if (!ids) return;
 
             this.fetchId = ids.fetchId;
-            this.topicId = ids.topicId;
-
+            this.entityId = ids.entityId;
+            this.entityType = ids.entityType;
             // Рассчитываем общее количество страниц
             const commentsCount = parseInt(this.loader.getAttribute('data-count')) || 0;
             this.totalPages = Math.max(1, Math.ceil(commentsCount / COMMENTS_PER_PAGE));
@@ -912,7 +914,7 @@
             }
 
             this.ids = this.getCommentsIDs();
-            if (!this.ids || !this.ids.fetchId || !this.ids.topicId) {
+            if (!this.ids || !this.ids.fetchId || !this.ids.entityId || !this.ids.entityType) {
                 console.error('Invalid or missing IDs in URL template');
                 return false;
             }
@@ -925,28 +927,37 @@
 
             return true;
         }
-
-        // Получение ID из URL шаблона с дополнительной проверкой
+        // Получение идентификаторов топика
         getCommentsIDs() {
             try {
                 const urlTemplate = this.loader.getAttribute('data-clickloaded-url-template');
                 if (!urlTemplate) return null;
 
-                const matches = urlTemplate.match(/\/fetch\/(\d+)\/Topic\/(\d+)/);
-                if (!matches || matches.length < 3) return null;
+                const matches = urlTemplate.match(/\/fetch\/(\d+)\/(Topic|User)\/(\d+)/);
+                if (!matches || matches.length < 4) return null;
 
                 return {
                     fetchId: matches[1],
-                    topicId: matches[2]
+                    entityId: matches[3],
+                    entityType: matches[2] // 'Topic' или 'User'
                 };
             } catch (error) {
                 console.error('Error parsing comment IDs:', error);
                 return null;
             }
         }
+
+        //Создание Url для запроса
         buildCommentsUrl(offset) {
-            return `https://shikimori.one/comments/fetch/${this.fetchId}/Topic/${this.topicId}/${offset}/${COMMENTS_PER_PAGE}`;
+            // Формируем URL в зависимости от типа сущности
+            if (this.entityType === 'User') {
+                return `https://shikimori.one/comments/fetch/${this.fetchId}/User/${this.entityId}/${offset}/${COMMENTS_PER_PAGE}`;
+            } else {
+                // По умолчанию считаем, что это Topic
+                return `https://shikimori.one/comments/fetch/${this.fetchId}/Topic/${this.entityId}/${offset}/${COMMENTS_PER_PAGE}`;
+            }
         }
+
 
         /**
  * Загружает комментарии с автоматическим повтором при ошибках
