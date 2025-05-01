@@ -432,42 +432,41 @@
         modal.append(videoContainer, closeBtn);
         document.body.append(modal);
 
-        // Функции управления
-        const open = videoId => {
+        // Управляющие функции
+        const openVideo = videoId => {
             iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0`;
             modal.style.display = 'flex';
             document.body.style.overflow = 'hidden';
-            return false;
         };
 
-        const close = () => {
+        const closeVideo = () => {
             iframe.src = '';
             modal.style.display = 'none';
             document.body.style.overflow = '';
         };
 
-        // Обработчики событий
+        // Обработчики
         modal.onclick = e => {
             if (e.target === modal) {
-                close();
+                closeVideo();
             }
         };
-        closeBtn.onclick = close;
-        document.addEventListener('keydown', e => e.key === 'Escape' && close());
+        closeBtn.onclick = closeVideo;
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') closeVideo();
+        });
 
-        // Получаем контейнер
+        // Контейнер
         const containerEl = typeof container === 'string'
         ? document.querySelector(container)
         : container;
 
         if (!containerEl) return;
 
-        // Обрабатываем видео-превью
+        // Обработка видео
         containerEl.querySelectorAll('.b-video.youtube .video-link').forEach(link => {
-            // Пропускаем, если нет data-href
             if (!link.dataset.href) return;
 
-            // Получаем ID видео YouTube
             const youtubeUrl = link.dataset.href;
             const videoId = youtubeUrl.match(/embed\/([^?]+)/)?.[1] ||
                   youtubeUrl.match(/youtu\.be\/([^?]+)/)?.[1] ||
@@ -475,29 +474,31 @@
 
             if (!videoId) return;
 
-            // Находим превью-картинку
             const preview = link.querySelector('img');
             if (!preview) return;
 
-            // Добавляем атрибут, чтобы image-viewer его игнорировал
             preview.setAttribute('data-video-preview', 'true');
 
-            // Сохраняем исходные стили
             const originalStyles = preview.getAttribute('style');
 
-            // Добавляем обработчик клика
-            link.addEventListener('click', function(e) {
+            // Удаляем ссылку, чтобы не было перехода
+            link.removeAttribute('href');
+
+            // Обработчик клика
+            link.onclick = function (e) {
                 e.preventDefault();
                 e.stopPropagation();
-                open(videoId);
-            });
+                openVideo(videoId);
+                return false;
+            };
 
-            // Добавляем cursor: zoom-in, если не задан
+            // Курсор
             if (!originalStyles || !originalStyles.includes('cursor:')) {
                 preview.style.cursor = 'zoom-in';
             }
         });
     }
+
     // Функция для цитирования
     function setupSimpleQuoteButtons(container) {
         if (!container) {
