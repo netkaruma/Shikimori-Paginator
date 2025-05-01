@@ -706,139 +706,116 @@
             });
         });
     }
-    // Настраивает кнопки модерации для комментариев в указанном контейнере
+   function setupModerationButtonsGlobal() {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+    if (!csrfToken) {
+        console.error('CSRF token not found');
+        return;
+    }
 
-    function setupModerationButtons(container) {
-        if (!container) return;
+    document.addEventListener('click', async (e) => {
+        const target = e.target;
+        const comment = target.closest('.b-comment');
 
-        // Получаем CSRF-токен из мета-тегов
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
-        if (!csrfToken) {
-            console.error('CSRF token not found');
+        if (!comment) return;
+
+        if (target.classList.contains('item-moderation')) {
+            e.preventDefault();
+            toggleModerationPanel(comment);
             return;
         }
 
-        container.addEventListener('click', async (e) => {
-            const target = e.target;
-            const comment = target.closest('.b-comment');
-
-            // Кнопка "На модерацию"
-            if (target.classList.contains('item-moderation')) {
-                e.preventDefault();
-                toggleModerationPanel(comment);
-                return;
-            }
-
-            // Кнопка "Отмена"
-            if (target.classList.contains('item-moderation-cancel')) {
-                e.preventDefault();
-                toggleModerationPanel(comment, false);
-                return;
-            }
-
-            // Обработка действий модерации
-            const actionBtn = target.closest('[data-action]');
-            if (actionBtn?.closest('.moderation-controls')) {
-                e.preventDefault();
-                await handleModerationAction(actionBtn, csrfToken);
-            }
-        });
-
-        function toggleModerationPanel(comment, show) {
-            if (!comment) return;
-
-            const mainControls = comment.querySelector('.main-controls');
-            const modControls = comment.querySelector('.moderation-controls');
-
-            if (!mainControls || !modControls) return;
-
-            const showPanel = typeof show === 'boolean' ? show : modControls.style.display !== 'block';
-            mainControls.style.display = showPanel ? 'none' : '';
-            modControls.style.display = showPanel ? 'block' : 'none';
-        }
-
-        async function handleModerationAction(button, token) {
-            const actionUrl = button.getAttribute('data-action');
-            const method = button.getAttribute('data-method') || 'POST';
-
-            // Проверка подтверждения для действий
-            if (!await verifyAction(button)) return;
-
-            try {
-                // Особый обработчик для бана (открывает новое окно)
-                if (button.classList.contains('item-ban')) {
-                    window.open(actionUrl, '_blank');
-                    return;
-                }
-
-                // Подготовка данных запроса
-                const headers = {
-                    'X-CSRF-Token': token,
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Accept': 'application/json'
-                };
-
-                let requestOptions = { method, headers, credentials: 'same-origin' };
-
-                // Для POST-запросов добавляем FormData
-                if (method === 'POST') {
-                    const formData = new FormData();
-                    formData.append('authenticity_token', token);
-                    requestOptions.body = formData;
-                }
-
-                const response = await fetch(actionUrl, requestOptions);
-
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-                const data = await response.json();
-                updateUI(button, data);
-
-            } catch (error) {
-                console.error('Moderation failed:', error);
-                alert('Ошибка при выполнении действия');
-            }
-        }
-
-        async function verifyAction(button) {
-            const confirmAdd = button.getAttribute('data-confirm-add');
-            const confirmRemove = button.getAttribute('data-confirm-remove');
-
-            if (!confirmAdd && !confirmRemove) return true;
-
-            const isActive = button.classList.contains('selected');
-            const message = isActive ? confirmRemove : confirmAdd;
-
-            return message ? confirm(message) : true;
-        }
-
-        function updateUI(button, response) {
-            const comment = button.closest('.b-comment');
-            if (!comment) return;
-
-            // Обновление маркера оффтопика
-            if (button.classList.contains('item-offtopic')) {
-                const marker = comment.querySelector('.b-offtopic_marker');
-                if (marker) {
-                    button.classList.toggle('selected');
-                    marker.style.display = button.classList.contains('selected') ? 'block' : 'none';
-                }
-            }
-
-            // Закрытие панели модерации
+        if (target.classList.contains('item-moderation-cancel')) {
+            e.preventDefault();
             toggleModerationPanel(comment, false);
+            return;
+        }
 
-            // Дополнительные обновления интерфейса на основе response
-            console.log('Moderation success:', response);
+        const actionBtn = target.closest('[data-action]');
+        if (actionBtn?.closest('.moderation-controls')) {
+            e.preventDefault();
+            await handleModerationAction(actionBtn, csrfToken);
+        }
+    });
+
+    function toggleModerationPanel(comment, show) {
+        const mainControls = comment.querySelector('.main-controls');
+        const modControls = comment.querySelector('.moderation-controls');
+
+        if (!mainControls || !modControls) return;
+
+        const showPanel = typeof show === 'boolean' ? show : modControls.style.display !== 'block';
+        mainControls.style.display = showPanel ? 'none' : '';
+        modControls.style.display = showPanel ? 'block' : 'none';
+    }
+
+    async function handleModerationAction(button, token) {
+        const actionUrl = button.getAttribute('data-action');
+        const method = button.getAttribute('data-method') || 'POST';
+
+        if (!await verifyAction(button)) return;
+
+        try {
+            if (button.classList.contains('item-ban')) {
+                window.open(actionUrl, '_blank');
+                return;
+            }
+
+            const headers = {
+                'X-CSRF-Token': token,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            };
+
+            let requestOptions = { method, headers, credentials: 'same-origin' };
+
+            if (method === 'POST') {
+                const formData = new FormData();
+                formData.append('authenticity_token', token);
+                requestOptions.body = formData;
+            }
+
+            const response = await fetch(actionUrl, requestOptions);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            const data = await response.json();
+            updateUI(button, data);
+
+        } catch (error) {
+            console.error('Moderation failed:', error);
+            alert('Ошибка при выполнении действия');
         }
     }
 
-    // Инициализация для всех контейнеров
-    function initModerationSystem() {
-        document.querySelectorAll('.b-comments').forEach(container => {
-            setupModerationButtons(container);
-        });
+    async function verifyAction(button) {
+        const confirmAdd = button.getAttribute('data-confirm-add');
+        const confirmRemove = button.getAttribute('data-confirm-remove');
+
+        if (!confirmAdd && !confirmRemove) return true;
+
+        const isActive = button.classList.contains('selected');
+        const message = isActive ? confirmRemove : confirmAdd;
+
+        return message ? confirm(message) : true;
     }
+
+    function updateUI(button, response) {
+        const comment = button.closest('.b-comment');
+        if (!comment) return;
+
+        if (button.classList.contains('item-offtopic')) {
+            const marker = comment.querySelector('.b-offtopic_marker');
+            if (marker) {
+                button.classList.toggle('selected');
+                marker.style.display = button.classList.contains('selected') ? 'block' : 'none';
+            }
+        }
+
+        toggleModerationPanel(comment, false);
+        console.log('Moderation success:', response);
+    }
+}
+
 
     // Функция для обработки кнопок удаления комментариев
     function bindDeleteButtons(container) {
@@ -1042,7 +1019,6 @@
             setupReplyButtons(this.container);
             setupSimpleQuoteButtons(this.container);
             setupEditButtons(this.container);
-            setupModerationButtons(this.container);
             initImageModalViewer(this.container);
             initVideoModalViewer(this.container);
         }
@@ -1177,5 +1153,6 @@
     }
 
     observeNewComments();
+   setupModerationButtonsGlobal()
 
 })();
