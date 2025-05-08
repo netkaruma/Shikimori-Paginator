@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Shikimori Comments Pagination
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.3
 // @description  Пагинация комментариев
 // @author       karuma
 // @license      MIT
@@ -17,8 +17,8 @@
 
     const COMMENTS_PER_PAGE = 5; // Число комментариев на странице
     const CHECK_INTERVAL = 500; // Частота проверки элементов на странице (Не ставить сликшом маленький)
-
-
+    const TimeoutToScroll = 200; // Задержка перед скролом к пагинатору. (После нажатия на вперед/назад)
+    const EnableScroll = true; // true/false - после после обновления блока комментариев скролл до пагинатора
 
     GM_addStyle(`
         .shiki-comments-pagination {
@@ -28,7 +28,6 @@
             margin: 20px 0;
             gap: 10px;
             padding: 10px;
-            background: #f8f8f8;
             border-radius: 4px;
         }
         .shiki-comments-pagination button {
@@ -70,103 +69,12 @@
          border-radius: 3px;
           box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
 }
-    `);
-
-    /* ========== ОБРАБОТКА СПОЙЛЕРОВ И УДАЛЕНИЯ ========== */
-
-    // Функция для раскрытия/закрытия inline-спойлеров (текстовых)
-    function bindSpoilerDeleteButtons(container) {
-        container.querySelectorAll('.b-spoiler_inline').forEach(spoiler => {
-            spoiler.addEventListener('click', async () => {
-                if (spoiler.classList.contains('opened')) {
-                    // Если спойлер уже открыт - закрываем его
-                    const originalContent = spoiler.dataset.originalContent;
-                    if (originalContent) {
-                        spoiler.innerHTML = originalContent;
-                    }
-                    spoiler.classList.remove('opened');
-                } else {
-                    // Если спойлер закрыт - открываем его
-                    spoiler.dataset.originalContent = spoiler.innerHTML;
-                    const text = spoiler.textContent.trim();
-                    spoiler.innerHTML = text;
-                    spoiler.classList.add('opened');
-                }
-            });
-        });
-    }
-    /**
- * Заменяет все даты в комментариях на относительное время (например, "2 часа назад").
- * @param {HTMLElement|string} container - Контейнер с комментариями (DOM-элемент или CSS-селектор).
- */
-    function replaceCommentDates(container) {
-        // Если передан селектор, находим контейнер
-        const commentsContainer = typeof container === 'string'
-        ? document.querySelector(container)
-        : container;
-
-        if (!commentsContainer) {
-            console.error('Контейнер с комментариями не найден!');
-            return;
-        }
-
-        // Находим все даты внутри контейнера
-        const dateElements = commentsContainer.querySelectorAll('time[datetime]');
-
-        dateElements.forEach((dateElement) => {
-            const dateTime = dateElement.getAttribute('datetime');
-            if (!dateTime) return;
-
-            const relativeTime = getRelativeTime(dateTime);
-            dateElement.textContent = relativeTime;
-            dateElement.setAttribute('title', new Date(dateTime).toLocaleString()); // Подсказка с полной датой
-        });
-    }
-
-    // Вспомогательная функция для форматирования времени
-    function getRelativeTime(dateTime) {
-        const now = new Date();
-        const past = new Date(dateTime);
-        const diffInSeconds = Math.floor((now - past) / 1000);
-
-        const intervals = {
-            год: { seconds: 31536000, endings: ['год', 'года', 'лет'] },
-            месяц: { seconds: 2592000, endings: ['месяц', 'месяца', 'месяцев'] },
-            неделя: { seconds: 604800, endings: ['неделя', 'недели', 'недель'] },
-            день: { seconds: 86400, endings: ['день', 'дня', 'дней'] },
-            час: { seconds: 3600, endings: ['час', 'часа', 'часов'] },
-            минута: { seconds: 60, endings: ['минута', 'минуты', 'минут'] },
-            секунда: { seconds: 1, endings: ['секунда', 'секунды', 'секунд'] },
-        };
-
-        for (const [unit, data] of Object.entries(intervals)) {
-            const interval = Math.floor(diffInSeconds / data.seconds);
-            if (interval >= 1) {
-                // Правильное склонение для русского языка
-                let ending;
-                if (interval % 10 === 1 && interval % 100 !== 11) {
-                    ending = data.endings[0]; // 1 минута, 1 день
-                } else if ([2, 3, 4].includes(interval % 10) && ![12, 13, 14].includes(interval % 100)) {
-                    ending = data.endings[1]; // 2 минуты, 3 дня
-                } else {
-                    ending = data.endings[2]; // 5 минут, 11 дней
-                }
-                return `${interval} ${ending} назад`;
-            }
-        }
-
-        return "только что";
-    }
-    // Функция для раскрытия block-спойлеров (с контентом)
-    function bindSpoilerBlockButtons(container) {
-        const spoilerStyles = document.createElement('style');
-        spoilerStyles.textContent = `
-        .b-spoiler_block.to-process {
+.b-spoiler_block {
             cursor: pointer;
             display: inline;
             margin: 0 1px;
         }
-        .b-spoiler_block.to-process > span[tabindex="0"] {
+        .b-spoiler_block > span[tabindex="0"] {
             display: inline;
             padding: 1px 4px;
             background-color: #687687;
@@ -177,15 +85,15 @@
             transition: all 0.15s ease;
             line-height: 1.3;
         }
-        .b-spoiler_block.to-process:hover > span[tabindex="0"] {
+        .b-spoiler_block:hover > span[tabindex="0"] {
             background-color: #5a6775;
         }
-        .b-spoiler_block.to-process.is-opened > span[tabindex="0"] {
+        .b-spoiler_block.is-opened > span[tabindex="0"] {
             background-color: #f5f5f5;
             color: #333;
             box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
         }
-        .b-spoiler_block.to-process > div {
+        .b-spoiler_block > div {
             display: none;
             margin-top: 3px;
             padding: 5px;
@@ -193,16 +101,50 @@
             border-radius: 2px;
             border: 1px solid #e0e0e0;
         }
-        .b-spoiler_block.to-process.is-opened > div {
+        .b-spoiler_block.is-opened > div {
             display: block;
         }
-    `;
-        document.head.appendChild(spoilerStyles);
+    `);
 
-        // Остальная часть функции остается без изменений
-        container.querySelectorAll('.b-spoiler_block.to-process').forEach(spoilerBlock => {
-            const spoilerTitle = spoilerBlock.querySelector('span[tabindex="0"]');
-            const contentDiv = spoilerBlock.querySelector('div');
+    /* ========== ОБРАБОТКА СПОЙЛЕРОВ И УДАЛЕНИЯ ========== */
+
+    // Функция для раскрытия/закрытия inline-спойлеров (текстовых)
+    function bindSpoilerDeleteButtons(container) {
+        container.querySelectorAll('.b-spoiler_inline').forEach(spoiler => {
+            // Клонируем элемент (это удалит все предыдущие обработчики)
+            const newSpoiler = spoiler.cloneNode(true);
+
+            // Добавляем наш обработчик
+            newSpoiler.addEventListener('click', async function(e) {
+                e.stopPropagation(); // Останавливаем всплытие
+
+                if (this.classList.contains('opened')) {
+                    // Закрываем спойлер
+                    if (this.dataset.originalContent) {
+                        this.innerHTML = this.dataset.originalContent;
+                    }
+                    this.classList.remove('opened');
+                } else {
+                    // Открываем спойлер
+                    this.dataset.originalContent = this.innerHTML;
+                    this.innerHTML = this.textContent.trim();
+                    this.classList.add('opened');
+                }
+            });
+
+            // Заменяем оригинальный элемент клоном
+            spoiler.parentNode.replaceChild(newSpoiler, spoiler);
+        });
+    }
+
+    // Функция для раскрытия block-спойлеров (с контентом)
+    function bindSpoilerBlockButtons(container) {
+
+
+        container.querySelectorAll('.b-spoiler_block').forEach(spoilerBlock => {
+            const newSpoilerBlock = spoilerBlock.cloneNode(true);
+            const spoilerTitle = newSpoilerBlock.querySelector('span[tabindex="0"]');
+            const contentDiv = newSpoilerBlock.querySelector('div');
 
             if (!spoilerTitle || !contentDiv) return;
 
@@ -213,257 +155,131 @@
 
                 if (contentDiv.style.display === 'none') {
                     contentDiv.style.display = 'block';
-                    spoilerBlock.classList.add('is-opened');
+                    newSpoilerBlock.classList.add('is-opened');
                     initImageModalViewer(contentDiv);
+                    initVideoModalViewer(contentDiv);
                 } else {
                     contentDiv.style.display = 'none';
-                    spoilerBlock.classList.remove('is-opened');
+                    newSpoilerBlock.classList.remove('is-opened');
                 }
+
             });
+            // Заменяем оригинальный элемент клоном
+            spoilerBlock.parentNode.replaceChild(newSpoilerBlock, spoilerBlock);
         });
 
-        initImageModalViewer(container);
-        initVideoModalViewer(container);
     }
-    // Функция для обработки обычных спойлеров
-    function bindSpoilerInlineBlocks(container) {
-        container.querySelectorAll('.b-spoiler.unprocessed').forEach(spoiler => {
-            spoiler.addEventListener('click', () => {
-                // Заменяем спойлер на его содержимое
-                const innerDiv = spoiler.querySelector('.content').querySelector('.inner');
-                if (innerDiv) {
-                    spoiler.replaceWith(innerDiv.cloneNode(true));
-                }
-            });
-        });
-    }
+
+
     // Кликабельность картинок
     function initImageModalViewer(container) {
-        // Создаем модальное окно
-        const modal = document.createElement('div');
-        modal.style.cssText = `
-        display: none;
-        position: fixed;
-        z-index: 9999;
-        left: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.95);
-        cursor: zoom-out;
-        align-items: center;
-        justify-content: center;
-        overflow: auto;
-    `;
-
-        const img = document.createElement('img');
-        img.style.cssText = `
-        max-width: 90vw;
-        max-height: 90vh;
-        display: block;
-        cursor: default;
-        object-fit: contain;
-        animation: fadeInScale 0.3s ease-out;
-    `;
-
-        const closeBtn = document.createElement('span');
-        closeBtn.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 30px;
-        font-size: 40px;
-        font-weight: bold;
-        cursor: pointer;
-        color: white;
-        transition: color 0.2s;
-        text-shadow: 0 0 5px rgba(0,0,0,0.8);
-        z-index: 10000;
-    `;
-        closeBtn.innerHTML = '&times;';
-
-        // Добавляем анимацию
-        const style = document.createElement('style');
-        style.textContent = `
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes fadeInScale { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
-    `;
-        document.head.appendChild(style);
-
-        modal.append(img, closeBtn);
-        document.body.append(modal);
-
-        // Функции управления
-        const open = src => {
-            img.src = src.replace('/thumbnail/', '/original/').replace('/x48/', '/x160/');
-            modal.style.display = 'flex';
-            document.body.style.overflow = 'hidden';
-
-            // Сброс стилей перед загрузкой нового изображения
-            img.style.width = 'auto';
-            img.style.height = 'auto';
-
-            return false;
-        };
-
-        const close = () => {
-            modal.style.display = 'none';
-            document.body.style.overflow = '';
-        };
-
-        // Обработчики событий
-        modal.onclick = e => {
-            if (e.target === modal || e.target === img) {
-                close();
-            }
-        };
-        closeBtn.onclick = close;
-        document.addEventListener('keydown', e => e.key === 'Escape' && close());
-
-        // Получаем контейнер
         const containerEl = typeof container === 'string'
         ? document.querySelector(container)
         : container;
 
         if (!containerEl) return;
 
-        // Обрабатываем изображения без изменения их исходного отображения
         containerEl.querySelectorAll('img').forEach(el => {
-            // Пропускаем изображения без src или те, что находятся внутри .b-video
             if (!el.src || el.closest('.b-video')) return;
 
-            // Сохраняем исходные стили
             const originalStyles = el.getAttribute('style');
-
-            // Создаем копию изображения для превью
             const preview = el.cloneNode(true);
 
-            // Добавляем обработчик клика
-            preview.addEventListener('click', function(e) {
+            preview.addEventListener('click', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
 
-                // Открываем оригинальное изображение в модальном окне
-                const originalSrc = el.src
-                .replace('/thumbnail/', '/original/')
-                .replace('/x48/', '/x160/')
-                .replace('/small/', '/large/');
+                // Создание модального окна при клике
+                const modal = document.createElement('div');
+                modal.style.cssText = `
+                display: flex;
+                position: fixed;
+                z-index: 9999;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.95);
+                cursor: zoom-out;
+                align-items: center;
+                justify-content: center;
+                overflow: auto;
+            `;
 
-                open(originalSrc);
+                const img = document.createElement('img');
+                img.src = el.src.replace('/thumbnail/', '/original/').replace('/x48/', '/x160/');
+                img.style.cssText = `
+                max-width: 90vw;
+                max-height: 90vh;
+                display: block;
+                object-fit: contain;
+                animation: fadeInScale 0.3s ease-out;
+            `;
+
+                const closeBtn = document.createElement('span');
+                closeBtn.innerHTML = '&times;';
+                closeBtn.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 30px;
+                font-size: 40px;
+                font-weight: bold;
+                cursor: pointer;
+                color: white;
+                text-shadow: 0 0 5px rgba(0,0,0,0.8);
+                z-index: 10000;
+            `;
+
+                const style = document.createElement('style');
+                style.textContent = `
+                @keyframes fadeInScale {
+                    from { opacity: 0; transform: scale(0.95); }
+                    to { opacity: 1; transform: scale(1); }
+                }
+            `;
+                document.head.appendChild(style);
+
+                const close = () => {
+                    modal.remove();
+                    style.remove();
+                    document.body.style.overflow = '';
+                    document.removeEventListener('keydown', onKeydown);
+                };
+
+                const onKeydown = (e) => {
+                    if (e.key === 'Escape') close();
+                };
+
+                modal.addEventListener('click', e => {
+                    if (e.target === modal || e.target === img) close();
+                });
+                closeBtn.addEventListener('click', close);
+                document.addEventListener('keydown', onKeydown);
+
+                modal.append(img, closeBtn);
+                document.body.append(modal);
+                document.body.style.overflow = 'hidden';
             });
 
-            // Заменяем оригинальное изображение на нашу копию
             el.parentNode.replaceChild(preview, el);
 
-            // Восстанавливаем исходные стили
             if (originalStyles) {
                 preview.setAttribute('style', originalStyles);
             }
 
-            // Добавляем cursor: zoom-in только если его нет в исходных стилях
             if (!originalStyles || !originalStyles.includes('cursor:')) {
                 preview.style.cursor = 'zoom-in';
             }
         });
     }
+
     function initVideoModalViewer(container) {
-        // Создаем модальное окно
-        const modal = document.createElement('div');
-        modal.style.cssText = `
-        display: none;
-        position: fixed;
-        z-index: 9999;
-        left: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.95);
-        cursor: zoom-out;
-        align-items: center;
-        justify-content: center;
-        overflow: auto;
-    `;
-
-        const videoContainer = document.createElement('div');
-        videoContainer.style.cssText = `
-        position: relative;
-        width: 90vw;
-        max-width: 1200px;
-        height: 0;
-        padding-bottom: 56.25%; /* 16:9 */
-        animation: fadeInScale 0.3s ease-out;
-    `;
-
-        const iframe = document.createElement('iframe');
-        iframe.style.cssText = `
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        border: none;
-    `;
-        iframe.setAttribute('allowfullscreen', '');
-        iframe.setAttribute('allow', 'autoplay');
-
-        const closeBtn = document.createElement('span');
-        closeBtn.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 30px;
-        font-size: 40px;
-        font-weight: bold;
-        cursor: pointer;
-        color: white;
-        transition: color 0.2s;
-        text-shadow: 0 0 5px rgba(0,0,0,0.8);
-        z-index: 10000;
-    `;
-        closeBtn.innerHTML = '&times;';
-
-        // Добавляем анимацию
-        const style = document.createElement('style');
-        style.textContent = `
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes fadeInScale { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
-    `;
-        document.head.appendChild(style);
-
-        videoContainer.appendChild(iframe);
-        modal.append(videoContainer, closeBtn);
-        document.body.append(modal);
-
-        // Управляющие функции
-        const openVideo = videoId => {
-            iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0`;
-            modal.style.display = 'flex';
-            document.body.style.overflow = 'hidden';
-        };
-
-        const closeVideo = () => {
-            iframe.src = '';
-            modal.style.display = 'none';
-            document.body.style.overflow = '';
-        };
-
-        // Обработчики
-        modal.onclick = e => {
-            if (e.target === modal) {
-                closeVideo();
-            }
-        };
-        closeBtn.onclick = closeVideo;
-        document.addEventListener('keydown', e => {
-            if (e.key === 'Escape') closeVideo();
-        });
-
-        // Контейнер
         const containerEl = typeof container === 'string'
         ? document.querySelector(container)
         : container;
 
         if (!containerEl) return;
 
-        // Обработка видео
         containerEl.querySelectorAll('.b-video.youtube .video-link').forEach(link => {
             if (!link.dataset.href) return;
 
@@ -477,386 +293,104 @@
             const preview = link.querySelector('img');
             if (!preview) return;
 
-            preview.setAttribute('data-video-preview', 'true');
-
             const originalStyles = preview.getAttribute('style');
-
-            // Удаляем ссылку, чтобы не было перехода
             link.removeAttribute('href');
 
-            // Обработчик клика
             link.onclick = function (e) {
                 e.preventDefault();
                 e.stopPropagation();
-                openVideo(videoId);
-                return false;
+
+                const modal = document.createElement('div');
+                modal.style.cssText = `
+                display: flex;
+                position: fixed;
+                z-index: 9999;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.95);
+                cursor: zoom-out;
+                align-items: center;
+                justify-content: center;
+                overflow: auto;
+            `;
+
+                const videoContainer = document.createElement('div');
+                videoContainer.style.cssText = `
+                position: relative;
+                width: 90vw;
+                max-width: 1200px;
+                height: 0;
+                padding-bottom: 56.25%;
+                animation: fadeInScale 0.3s ease-out;
+            `;
+
+                const iframe = document.createElement('iframe');
+                iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0`;
+                iframe.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                border: none;
+            `;
+                iframe.setAttribute('allowfullscreen', '');
+                iframe.setAttribute('allow', 'autoplay');
+
+                const closeBtn = document.createElement('span');
+                closeBtn.innerHTML = '&times;';
+                closeBtn.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 30px;
+                font-size: 40px;
+                font-weight: bold;
+                cursor: pointer;
+                color: white;
+                text-shadow: 0 0 5px rgba(0,0,0,0.8);
+                z-index: 10000;
+            `;
+
+                const style = document.createElement('style');
+                style.textContent = `
+                @keyframes fadeInScale {
+                    from { opacity: 0; transform: scale(0.95); }
+                    to { opacity: 1; transform: scale(1); }
+                }
+            `;
+                document.head.appendChild(style);
+
+                const close = () => {
+                    modal.remove();
+                    style.remove();
+                    document.body.style.overflow = '';
+                    document.removeEventListener('keydown', onKeydown);
+                };
+
+                const onKeydown = (e) => {
+                    if (e.key === 'Escape') close();
+                };
+
+                modal.addEventListener('click', e => {
+                    if (e.target === modal) close();
+                });
+                closeBtn.addEventListener('click', close);
+                document.addEventListener('keydown', onKeydown);
+
+                videoContainer.appendChild(iframe);
+                modal.append(videoContainer, closeBtn);
+                document.body.append(modal);
+                document.body.style.overflow = 'hidden';
             };
 
-            // Курсор
             if (!originalStyles || !originalStyles.includes('cursor:')) {
                 preview.style.cursor = 'zoom-in';
             }
         });
     }
 
-    // Функция для цитирования
-    function setupSimpleQuoteButtons(container) {
-        if (!container) {
-            console.error('Container not found');
-            return;
-        }
-
-        // Находим редактор как следующий элемент после контейнера
-        const editorContainer = container.nextElementSibling?.classList.contains('editor-container')
-        ? container.nextElementSibling
-        : container.nextElementSibling?.nextElementSibling;
-
-        const editor = editorContainer?.querySelector('.editor-area');
-
-        container.querySelectorAll('.item-quote').forEach(button => {
-            button.classList.add('is-active');
-            button.classList.remove('to-process');
-
-            button.addEventListener('click', function(e) {
-                e.preventDefault();
-
-                const comment = this.closest('.b-comment');
-                if (!comment) return;
-
-                // Получаем данные комментария
-                const commentId = comment.id || comment.getAttribute('data-track_comment');
-                const userId = comment.getAttribute('data-user_id');
-                const userName = comment.getAttribute('data-user_nickname');
-
-                // Получаем текст комментария
-                const commentBody = comment.querySelector('.body');
-                if (!commentBody) return;
-
-                const textToQuote = commentBody.textContent.trim();
-
-                // Формируем цитату
-                const quote = `[quote=${commentId};${userId};${userName}]${textToQuote}[/quote]\n\n`;
-
-                // Вставляем в редактор, если он найден
-                if (editor) {
-                    // Добавляем перенос, если уже есть текст
-                    const prefix = editor.value.trim() ? '\n\n' : '';
-                    editor.value += prefix + quote;
-                    editor.focus();
-
-                    // Показываем редактор
-                    if (editorContainer) {
-                        editorContainer.style.display = 'block';
-                        editorContainer.scrollIntoView({
-                            behavior: 'smooth',
-                            block: 'nearest'
-                        });
-                    }
-                }
-            });
-        });
-    }
-    // Функция для редактирования комментария
-    function setupEditButtons(container) {
-        container.querySelectorAll('.item-edit').forEach(button => {
-            button.addEventListener('click', function(e) {
-                e.preventDefault();
-
-                const comment = this.closest('.b-comment');
-                if (!comment) return;
-
-                // Получаем ID комментария
-                const commentId = comment.id || comment.getAttribute('data-track_comment');
-
-                // Загружаем форму редактирования
-                fetch(`https://shikimori.one/comments/${commentId}/edit`, {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'text/html',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    credentials: 'same-origin'
-                })
-                    .then(response => response.text())
-                    .then(html => {
-                    // Создаем временный элемент для парсинга HTML
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    const form = doc.querySelector('.edit_comment');
-
-                    if (form) {
-                        // Заменяем содержимое комментария на форму редактирования
-                        comment.querySelector('.inner').innerHTML = form.outerHTML;
-                        comment.querySelector('.inner').classList.add('is-editing');
-
-                        // Инициализируем редактор
-                        initEditor(comment);
-
-                        // Настраиваем обработчик отправки формы
-                        setupEditFormSubmit(comment, commentId);
-                    }
-                })
-                    .catch(error => {
-                    console.error('Error loading edit form:', error);
-                });
-            });
-        });
-    }
-
-    function initEditor(comment) {
-        // Здесь можно добавить инициализацию редактора, если требуется
-        const textarea = comment.querySelector('.editor-area');
-        if (textarea) {
-            textarea.focus();
-        }
-    }
-
-    function setupEditFormSubmit(comment, commentId) {
-        const form = comment.querySelector('.edit_comment');
-        if (!form) return;
-
-        form.addEventListener('submit', function(e) {
-            e.preventDefault();
-
-            const formData = new FormData(form);
-
-            fetch(form.action, {
-                method: 'PATCH',
-                body: formData,
-                headers: {
-                    'Accept': 'application/json',
-                    'X-CSRF-Token': form.querySelector('[name="authenticity_token"]').value,
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                credentials: 'same-origin'
-            })
-                .then(response => response.json())
-                .then(data => {
-                if (data.content) {
-                    // Обновляем содержимое комментария
-                    const inner = comment.querySelector('.inner');
-                    inner.classList.remove('is-editing');
-                    inner.innerHTML = data.content;
-
-                    // Можно добавить обработчики снова
-                    setupEditButtons(comment.parentElement);
-                }
-            })
-                .catch(error => {
-                console.error('Error submitting edit:', error);
-            });
-        });
-
-        // Обработчик кнопки "Отмена"
-        const cancelButton = comment.querySelector('.cancel');
-        if (cancelButton) {
-            cancelButton.addEventListener('click', function(e) {
-                e.preventDefault();
-                // Загружаем оригинальный комментарий
-                fetch(`https://shikimori.one/comments/${commentId}`, {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'text/html',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    credentials: 'same-origin'
-                })
-                    .then(response => response.text())
-                    .then(html => {
-                    comment.querySelector('.inner').innerHTML = html;
-                    comment.querySelector('.inner').classList.remove('is-editing');
-                });
-            });
-        }
-    }
-
-    // Функция для ответа на комментарий
-    function setupReplyButtons(container) {
-        container.querySelectorAll('.item-reply').forEach(button => {
-            button.addEventListener('click', function(e) {
-                e.preventDefault();
-
-                const comment = this.closest('.b-comment');
-                if (!comment) return;
-
-                // Получаем ID комментария и пользователя
-                const commentId = comment.getAttribute('data-track_comment') ||
-                      comment.id.replace('comment-', '');
-                const userId = comment.getAttribute('data-user_id');
-                const userName = comment.getAttribute('data-user_nickname');
-
-                // Формируем упоминание
-                const mention = `[comment=${commentId};${userId}], `;
-
-                // Ищем редактор относительно контейнера (аналогично функции цитирования)
-                const editorContainer = container.nextElementSibling?.classList.contains('editor-container')
-                ? container.nextElementSibling
-                : container.nextElementSibling?.nextElementSibling;
-
-                const editor = editorContainer?.querySelector('.editor-area');
-
-                if (editor) {
-                    editor.value += mention;
-                    editor.focus();
-
-                    if (editorContainer) {
-                        editorContainer.style.display = 'block';
-                        editorContainer.scrollIntoView({
-                            behavior: 'smooth',
-                            block: 'nearest'
-                        });
-                    }
-                }
-            });
-        });
-    }
-   function setupModerationButtonsGlobal() {
-    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
-    if (!csrfToken) {
-        console.error('CSRF token not found');
-        return;
-    }
-
-    document.addEventListener('click', async (e) => {
-        const target = e.target;
-        const comment = target.closest('.b-comment');
-
-        if (!comment) return;
-
-        if (target.classList.contains('item-moderation')) {
-            e.preventDefault();
-            toggleModerationPanel(comment);
-            return;
-        }
-
-        if (target.classList.contains('item-moderation-cancel')) {
-            e.preventDefault();
-            toggleModerationPanel(comment, false);
-            return;
-        }
-
-        const actionBtn = target.closest('[data-action]');
-        if (actionBtn?.closest('.moderation-controls')) {
-            e.preventDefault();
-            await handleModerationAction(actionBtn, csrfToken);
-        }
-    });
-
-    function toggleModerationPanel(comment, show) {
-        const mainControls = comment.querySelector('.main-controls');
-        const modControls = comment.querySelector('.moderation-controls');
-
-        if (!mainControls || !modControls) return;
-
-        const showPanel = typeof show === 'boolean' ? show : modControls.style.display !== 'block';
-        mainControls.style.display = showPanel ? 'none' : '';
-        modControls.style.display = showPanel ? 'block' : 'none';
-    }
-
-    async function handleModerationAction(button, token) {
-        const actionUrl = button.getAttribute('data-action');
-        const method = button.getAttribute('data-method') || 'POST';
-
-        if (!await verifyAction(button)) return;
-
-        try {
-            if (button.classList.contains('item-ban')) {
-                window.open(actionUrl, '_blank');
-                return;
-            }
-
-            const headers = {
-                'X-CSRF-Token': token,
-                'X-Requested-With': 'XMLHttpRequest',
-                'Accept': 'application/json'
-            };
-
-            let requestOptions = { method, headers, credentials: 'same-origin' };
-
-            if (method === 'POST') {
-                const formData = new FormData();
-                formData.append('authenticity_token', token);
-                requestOptions.body = formData;
-            }
-
-            const response = await fetch(actionUrl, requestOptions);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-            const data = await response.json();
-            updateUI(button, data);
-
-        } catch (error) {
-            console.error('Moderation failed:', error);
-            alert('Ошибка при выполнении действия');
-        }
-    }
-
-    async function verifyAction(button) {
-        const confirmAdd = button.getAttribute('data-confirm-add');
-        const confirmRemove = button.getAttribute('data-confirm-remove');
-
-        if (!confirmAdd && !confirmRemove) return true;
-
-        const isActive = button.classList.contains('selected');
-        const message = isActive ? confirmRemove : confirmAdd;
-
-        return message ? confirm(message) : true;
-    }
-
-    function updateUI(button, response) {
-        const comment = button.closest('.b-comment');
-        if (!comment) return;
-
-        if (button.classList.contains('item-offtopic')) {
-            const marker = comment.querySelector('.b-offtopic_marker');
-            if (marker) {
-                button.classList.toggle('selected');
-                marker.style.display = button.classList.contains('selected') ? 'block' : 'none';
-            }
-        }
-
-        toggleModerationPanel(comment, false);
-        console.log('Moderation success:', response);
-    }
-}
-
-
-    // Функция для обработки кнопок удаления комментариев
-    function bindDeleteButtons(container) {
-        container.querySelectorAll('.item-delete').forEach(button => {
-            button.addEventListener('click', async () => {
-                // Находим родительский комментарий
-                const comment = button.closest('.b-comment');
-                if (!comment) return;
-                // Получаем URL для удаления
-                const deleteUrl = comment.querySelector('.item-delete-confirm')?.getAttribute('data-action');
-                if (!deleteUrl) return;
-                // Подтверждение перед удалением
-                if (!confirm('Удалить комментарий?')) return;
-
-                try {
-                    // Отправляем DELETE-запрос
-                    const response = await fetch(deleteUrl, {
-                        method: 'DELETE',
-                        headers: {
-                            'X-Requested-With': 'XMLHttpRequest',
-                            'Accept': 'application/json'
-                        }
-                    });
-
-                    if (response.ok) {
-                        comment.remove();
-                    } else {
-                        console.error('Ошибка удаления комментария:', await response.text());
-                        alert('Не удалось удалить комментарий.');
-                    }
-                } catch (err) {
-                    console.error('Ошибка удаления:', err);
-                    alert('Ошибка сети при удалении.');
-                }
-            });
-        });
-    }
 
     /* ========== КЛАСС ДЛЯ РАБОТЫ С БЛОКАМИ КОММЕНТАРИЕВ ========== */
 
@@ -871,7 +405,9 @@
             this.currentPage = 1;// Текущая страница
             this.totalPages = 1;// Всего страниц
             this.pagination = null;// Элемент пагинации
-
+            this.dataskip = parseInt(this.loader.getAttribute('data-skip'));
+            this.datacount = parseInt(this.loader.getAttribute('data-count'));
+            this.html
             this.init();
         }
         // Основная инициализация
@@ -885,7 +421,7 @@
             this.entityId = ids.entityId;
             this.entityType = ids.entityType;
             // Рассчитываем общее количество страниц
-            const commentsCount = parseInt(this.loader.getAttribute('data-count')) || 0;
+            const commentsCount = this.datacount + this.dataskip || 0;
             this.totalPages = Math.max(1, Math.ceil(commentsCount / COMMENTS_PER_PAGE));
         }
 
@@ -988,7 +524,7 @@
 
                     const data = await response.json();
                     if (!data?.content) throw new Error('Invalid response format: missing content');
-                    return data.content;
+                    return data;
 
                 } catch (error) {
                     lastError = error;
@@ -1007,9 +543,13 @@
             try {
                 const offset = (this.currentPage - 1) * COMMENTS_PER_PAGE;
                 this.container.classList.add('shiki-comments-loading');
-
-                const html = await this.fetchComments(this.buildCommentsUrl(offset));
-                this.replaceComments(html);
+                const data = await this.fetchComments(this.buildCommentsUrl(offset));
+                this.container.innerHTML = data.content;
+                jQuery(this.container).process(data.JS_EXPORTS);
+                bindSpoilerDeleteButtons(this.container);
+                bindSpoilerBlockButtons(this.container);
+                initImageModalViewer(this.container);
+                initVideoModalViewer(this.container);
             } catch (error) {
                 console.error('Ошибка загрузки комментариев:', error);
             } finally {
@@ -1017,33 +557,22 @@
             }
         }
 
-        // Замена содержимого блока комментариев
-        replaceComments(html) {
-            this.container.innerHTML = html;
-            this.loader = this.container.querySelector('.comments-loader');
-            bindDeleteButtons(this.container);
-
-            // Привязываем обработчики событий к новым элементам
-            bindSpoilerDeleteButtons(this.container);
-            bindSpoilerBlockButtons(this.container);
-            bindSpoilerInlineBlocks(this.container);
-            replaceCommentDates(this.container);
-            setupReplyButtons(this.container);
-            setupSimpleQuoteButtons(this.container);
-            setupEditButtons(this.container);
-            initImageModalViewer(this.container);
-            initVideoModalViewer(this.container);
-        }
 
         // Создание интерфейса пагинации
         renderPagination() {
             if (this.pagination) {
                 this.pagination.remove(); // Удаляем старую пагинацию
             }
-
+            function ScrollToPagination () {
+                this.pagination.scrollIntoView({
+                    behavior: 'smooth', // Плавная прокрутка
+                    block: 'start'// Выравнивание по верхнему краю элемента
+                });
+            }
             // Создаем новый элемент пагинации
             this.pagination = document.createElement('div');
             this.pagination.className = 'shiki-comments-pagination';
+            this.pagination.classList.add('l-page');
             this.pagination.innerHTML = `
                 <button class="prev-page">&lt; Назад</button>
                 <span class="page-info">Страница ${this.currentPage} из ${this.totalPages}</span>
@@ -1059,13 +588,28 @@
             const insertAfter = editorContainer || this.container;
             insertAfter.parentNode.insertBefore(this.pagination, insertAfter.nextSibling);
 
+            function ScrollIntoPagination(container) {
+                if (EnableScroll) {
+                    setTimeout(() => {
+                        // Получаем позицию элемента относительно документа
+                        const elementRect = container.getBoundingClientRect();
+                        const scrollPosition = elementRect.bottom + window.pageYOffset - window.innerHeight;
 
+                        // Добавляем отступ -100px сверху
+                        window.scrollTo({
+                            top: scrollPosition - (-80),
+                            behavior: 'instant' // или 'smooth' для плавной прокрутки
+                        });
+                    },TimeoutToScroll) // Задержка
+                }
+            }
             // Обработчики событий для кнопок пагинации
             this.pagination.querySelector('.prev-page').addEventListener('click', async () => {
                 if (this.currentPage > 1) {
                     this.currentPage--;
                     await this.loadComments();
                     this.renderPagination(); // Обновляем отображение
+                    ScrollIntoPagination(this.pagination);
                 }
             });
 
@@ -1075,6 +619,7 @@
                     this.currentPage++;
                     await this.loadComments();
                     this.renderPagination();
+                    ScrollIntoPagination(this.pagination);
                 }
             });
 
@@ -1084,6 +629,7 @@
                     this.currentPage = newPage;
                     await this.loadComments();
                     this.renderPagination();
+                    ScrollIntoPagination(this.pagination);
                 }
             });
         }
@@ -1163,8 +709,10 @@
             checkInterval = null;
         }
     }
-
+    window.addEventListener('popstate', (event) => {
+        window.location.reload();
+        console.log('Сработал popstate!', event.state);
+    });
     observeNewComments();
-   setupModerationButtonsGlobal()
 
 })();
