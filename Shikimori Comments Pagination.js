@@ -19,6 +19,7 @@
     const CHECK_INTERVAL = 500; // Частота проверки элементов на странице (Не ставить сликшом маленький)
     const TimeoutToScroll = 200; // Задержка перед скролом к пагинатору. (После нажатия на вперед/назад)
     const EnableScroll = true; // true/false - после после обновления блока комментариев скролл до пагинатора
+    const CustomView = true; // Кастомный вид спойлеров/картинок
 
     GM_addStyle(`
         .shiki-comments-pagination {
@@ -68,8 +69,8 @@
          padding: 2px 4px;
          border-radius: 3px;
           box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
-}
-.b-spoiler_block {
+        }
+        .b-spoiler_block {
             cursor: pointer;
             display: inline;
             margin: 0 1px;
@@ -407,7 +408,6 @@
             this.pagination = null;// Элемент пагинации
             this.dataskip = parseInt(this.loader.getAttribute('data-skip'));
             this.datacount = parseInt(this.loader.getAttribute('data-count'));
-            this.html
             this.init();
         }
         // Основная инициализация
@@ -494,16 +494,7 @@
                 return `https://shikimori.one/comments/fetch/${this.fetchId}/Topic/${this.entityId}/${offset}/${COMMENTS_PER_PAGE}`;
             }
         }
-
-
-        /**
- * Загружает комментарии с автоматическим повтором при ошибках
- * @param {string} url - URL для запроса
- * @param {number} [maxRetries] - Максимальное количество попыток (по умолчанию: 4)
- * @param {number} [retryDelay] - Задержка между попытками в миллисекундах (по умолчанию: 2 секунды)
- * @returns {Promise<string>} HTML-контент комментариев
- * @throws {Error} Если все попытки завершились ошибкой
- */
+        // Отправка запроса на сервер
         async fetchComments(url, maxRetries = 4, initialRetryDelay = 2000) {
             let lastError = null;
 
@@ -546,10 +537,12 @@
                 const data = await this.fetchComments(this.buildCommentsUrl(offset));
                 this.container.innerHTML = data.content;
                 jQuery(this.container).process(data.JS_EXPORTS);
-                bindSpoilerDeleteButtons(this.container);
-                bindSpoilerBlockButtons(this.container);
-                initImageModalViewer(this.container);
-                initVideoModalViewer(this.container);
+                if (CustomView) {
+                    bindSpoilerDeleteButtons(this.container);
+                    bindSpoilerBlockButtons(this.container);
+                    initImageModalViewer(this.container);
+                    initVideoModalViewer(this.container);
+                }
             } catch (error) {
                 console.error('Ошибка загрузки комментариев:', error);
             } finally {
@@ -691,7 +684,7 @@
             if (currentBlocks.length !== lastKnownBlocks.length ||
                 currentBlocks.some(block => !lastKnownBlocks.includes(block))) {
                 console.log("Обнаружены изменения в .b-comments");
-                await init(); // Добавлен await для асинхронной init()
+                await init();
                 lastKnownBlocks = currentBlocks;
             }
         }, CHECK_INTERVAL);
