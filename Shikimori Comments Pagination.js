@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Shikimori Comments Pagination
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.4
 // @description  Пагинация комментариев
 // @author       karuma
 // @license      MIT
