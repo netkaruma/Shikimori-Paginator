@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Shikimori Comments Pagination
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.4
 // @description  Пагинация комментариев
 // @author       karuma
 // @license      MIT
@@ -137,40 +137,6 @@
             spoiler.parentNode.replaceChild(newSpoiler, spoiler);
         });
     }
-
-    // Функция для раскрытия block-спойлеров (с контентом)
-    function bindSpoilerBlockButtons(container) {
-
-
-        container.querySelectorAll('.b-spoiler_block').forEach(spoilerBlock => {
-            const newSpoilerBlock = spoilerBlock.cloneNode(true);
-            const spoilerTitle = newSpoilerBlock.querySelector('span[tabindex="0"]');
-            const contentDiv = newSpoilerBlock.querySelector('div');
-
-            if (!spoilerTitle || !contentDiv) return;
-
-            contentDiv.style.display = 'none';
-
-            spoilerTitle.addEventListener('click', (e) => {
-                e.stopPropagation();
-
-                if (contentDiv.style.display === 'none') {
-                    contentDiv.style.display = 'block';
-                    newSpoilerBlock.classList.add('is-opened');
-                    initImageModalViewer(contentDiv);
-                    initVideoModalViewer(contentDiv);
-                } else {
-                    contentDiv.style.display = 'none';
-                    newSpoilerBlock.classList.remove('is-opened');
-                }
-
-            });
-            // Заменяем оригинальный элемент клоном
-            spoilerBlock.parentNode.replaceChild(newSpoilerBlock, spoilerBlock);
-        });
-
-    }
-
 
     // Кликабельность картинок
     function initImageModalViewer(container) {
@@ -539,7 +505,6 @@
                 jQuery(this.container).process(data.JS_EXPORTS);
                 if (CustomView) {
                     bindSpoilerDeleteButtons(this.container);
-                    bindSpoilerBlockButtons(this.container);
                     initImageModalViewer(this.container);
                     initVideoModalViewer(this.container);
                 }
