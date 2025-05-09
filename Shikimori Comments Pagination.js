@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Shikimori Comments Pagination
 // @namespace    http://tampermonkey.net/
-// @version      1.4
+// @version      1.5
 // @description  Пагинация комментариев
 // @author       karuma
 // @license      MIT
@@ -63,7 +63,15 @@
             opacity: 0.7;
             pointer-events: none;
         }
-        .b-spoiler_inline.opened {
+    `);
+    function addStyles () {
+
+        // Создаем элемент style
+        const styleElement = document.createElement('style');
+
+        // Добавляем CSS-правила
+        styleElement.textContent = `
+         .b-spoiler_inline.opened {
          background-color: #f5f5f5;
          color: #333;
          padding: 2px 4px;
@@ -105,8 +113,14 @@
         .b-spoiler_block.is-opened > div {
             display: block;
         }
-    `);
+`;
 
+        // Добавляем в head документа
+        document.head.appendChild(styleElement);
+    }
+    if (CustomView) {
+        addStyles();
+    }
     /* ========== ОБРАБОТКА СПОЙЛЕРОВ И УДАЛЕНИЯ ========== */
 
     // Функция для раскрытия/закрытия inline-спойлеров (текстовых)
@@ -369,7 +383,7 @@
             this.fetchId = null;// ID для запросов
             this.entityId = null; // Может быть topicId или userId
             this.entityType = null; // 'Topic' или 'User'
-            this.currentPage = 1;// Текущая страница
+            this.currentPage = this.loader.getAttribute('currentpage') || 1;// Текущая страница
             this.totalPages = 1;// Всего страниц
             this.pagination = null;// Элемент пагинации
             this.dataskip = parseInt(this.loader.getAttribute('data-skip'));
@@ -502,6 +516,17 @@
                 this.container.classList.add('shiki-comments-loading');
                 const data = await this.fetchComments(this.buildCommentsUrl(offset));
                 this.container.innerHTML = data.content;
+                // Создаем и добавляем loader
+                const loaderDiv = document.createElement('div');
+                loaderDiv.style.display = 'none';
+                loaderDiv.className = 'comments-loader';
+                loaderDiv.setAttribute('data-count',this.datacount);
+                loaderDiv.setAttribute('data-skip',this.dataskip);
+                loaderDiv.setAttribute('data-clickloaded-url-template',this.loader.getAttribute('data-clickloaded-url-template'));
+                loaderDiv.setAttribute('currentpage',this.currentPage);
+                // Добавляем новый loader в контейнер
+                this.container.appendChild(loaderDiv);
+
                 jQuery(this.container).process(data.JS_EXPORTS);
                 if (CustomView) {
                     bindSpoilerDeleteButtons(this.container);
@@ -545,6 +570,15 @@
             // Вставляем после editor-container если найден, иначе после контейнера комментариев
             const insertAfter = editorContainer || this.container;
             insertAfter.parentNode.insertBefore(this.pagination, insertAfter.nextSibling);
+
+
+            // Удаляем старый пагинатор, если он есть сразу после нового
+            const oldPagination = this.pagination.nextElementSibling;
+            if (oldPagination && oldPagination.classList.contains('shiki-comments-pagination')) {
+                oldPagination.remove();
+            }
+
+
 
             function ScrollIntoPagination(container) {
                 if (EnableScroll) {
@@ -613,9 +647,7 @@
                         initializedBlocks.set(container, instance);
                         await instance.CreateCommentsBlock();
                         console.log('Successfully initialized:', container);
-                    } else {
-                        await initializedBlocks.get(container).CreateCommentsBlock();
-                    }
+                    } 
                 } catch (error) {
                     console.error(`Error processing block ${container}:`, error);
                     // Пробрасываем ошибку дальше, если нужно прервать все операции
@@ -668,7 +700,8 @@
         }
     }
     window.addEventListener('popstate', (event) => {
-        window.location.reload();
+        //window.location.reload();
+        //document.querySellectorAll('.shiki-comments-pagination').forEach(element => element.remove());
         console.log('Сработал popstate!', event.state);
     });
     observeNewComments();
