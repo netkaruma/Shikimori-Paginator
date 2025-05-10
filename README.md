@@ -21,7 +21,8 @@ ___
 ![image](https://github.com/user-attachments/assets/1ed561a6-4071-4f0c-8678-e11f4d05ccfe)  
 ___
 ## Кастомизация пагинатора и основные переменные конфига описаны в коде  
-![image](https://github.com/user-attachments/assets/81822403-8ab6-4164-b594-863ea476b8b8)  
+![image](https://github.com/user-attachments/assets/82d6c908-49df-4e73-bcd6-f95e8525b46f)
+
 
 
 
