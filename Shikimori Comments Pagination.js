@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Shikimori Comments Pagination
 // @namespace    http://tampermonkey.net/
-// @version      1.6
+// @version      1.7
 // @description  Пагинация комментариев
 // @author       karuma
 // @license      MIT
@@ -14,6 +14,7 @@
 (function () {
     'use strict';
 
+    // CONFIG ---------------------------------------------------------------------------------------
 
     const COMMENTS_PER_PAGE = 5; // Число комментариев на странице
     const CHECK_INTERVAL = 500; // Частота проверки элементов на странице (Не ставить сликшом маленький)
@@ -21,92 +22,137 @@
     const EnableScroll = true; // true/false - после после обновления блока комментариев скролл до пагинатора
     const CustomView = true; // Кастомный вид спойлеров/картинок
 
-    /*
+     /*
      Стилевые переменные в RGBA формате
      rgba(90, 120, 160, 0.25) Где первые 3 значения количество Красного/Зеленого/Синего в диапазоне от 0 до 255
      а 3 значение прозрачность элемента от 0 до 1, где 1 - это полностью не прозрачный
      */
     const STYLE_VARS = {
+        // Основные: прозрачность, скругление, ширина поля
+        OPACITY: '0.8', // Общая прозрачность (0-1)
+        BUTTON_RADIUS: '0.375rem', // Скругление углов
+        INPUT_WIDTH: '3.2rem', // Ширина поля ввода
 
-        OPACITY: '0.8', // Прозрачность текста в пагинаторе
-        COLOR_TEXT:'',// Цвет текста в пагинаторе (По умолчанию такой же как на всей остольной странице)
-        // Основные цвета кнопок
-        PRIMARY_COLOR: 'rgba(90, 120, 160, 0.25)', // Цвет кнопок и прозрачность
-        PRIMARY_COLOR_HOVER: 'rgba(90, 120, 160, 0.25)', // Цвет и прозрачность кнопок  при наведении
+        // Цвета: наследуют стили страницы по умолчанию
+        colors: {
+            text: 'inherit', // Цвет текста inherit - Такой же как на странице
+            buttonText: 'inherit', // Цвет текста кнопок
+            primary: 'rgba(90,120,160,0.25)', // Цвет кнопок
+            primaryHover: 'rgba(90,120,160,0.35)', // Цвет кнопок при наведении
+            inputBg: 'rgba(255,255,255,0.1)', // Фон поля ввода
+            inputBorder: 'rgba(150,150,150,0.3)' // Граница поля
+        },
 
-        // Цвета поля ввода
-        INPUT_BG: 'rgba(255, 255, 255, 0.1)', // Фон поля ввода
-        INPUT_BORDER: 'rgba(150, 150, 150, 0.3)', // Граница поля ввода
+        // Отступы: в rem/em для адаптивности
+        spacing: {
+            gap: '0.5rem', // Расстояние между элементами (8px)
+            margin: '1.5rem 0', // Внешние отступы контейнера
+            padding: '0.5rem 0.75rem', // Внутренние отступы
+            buttonPadding: '0.25em 0.6em', // Отступы кнопок
+            inputPadding: '0.25em 0.4em' // Отступы поля
+        },
 
-        // Размеры кнопок
-        BUTTON_RADIUS: '0.375rem', // Радиус скругления кнопок
-        INPUT_WIDTH: '3.2rem' // Ширина поля ввода
+        // Шрифты: относительные размеры (rem/em)
+        typography: {
+            fontSize: '0.95rem', // Основной размер (~15px)
+            buttonFontSize: '0.85rem', // Размер кнопок (~13.5px)
+            infoFontSize: '0.8rem', // Размер текста "Страница X из Y"
+            lineHeight: '1.2' // Межстрочный интервал (120%)
+        },
+
+        // Анимации: плавные переходы
+        transitions: {
+            button: 'background-color 0.2s ease, transform 0.15s ease', // Эффекты кнопок
+            hoverTransform: 'translateY(-1px)' // Сдвиг при наведении
+        }
     };
+    // CONFIG ---------------------------------------------------------------------------------------
 
-    GM_addStyle(`
+    // Функция для получения CSS-переменных со страницы
+    function getCSSCustomProperty(prop, fallback) {
+        if (typeof document === 'undefined') return fallback;
+        return getComputedStyle(document.documentElement).getPropertyValue(prop) || fallback;
+    }
+
+    // Инициализация стилей с возможностью переопределения
+    function initStyles() {
+        // Попробуем получить значения из CSS-переменных, если они есть
+        const rootStyles = getComputedStyle(document.documentElement);
+
+        // Обновляем STYLE_VARS значениями из CSS-переменных (если они существуют)
+        STYLE_VARS.colors.text = getCSSCustomProperty('--text-color', STYLE_VARS.colors.text);
+        STYLE_VARS.colors.buttonText = getCSSCustomProperty('--button-text-color', STYLE_VARS.colors.buttonText);
+        STYLE_VARS.colors.primary = getCSSCustomProperty('--primary-color', STYLE_VARS.colors.primary);
+
+        // Добавляем глобальные стили
+        GM_addStyle(`
         .shiki-comments-loading {
             opacity: 0.7;
             pointer-events: none;
         }
     `);
+    }
 
     function addStylesPaginator() {
         const stylePaginator = document.createElement('style');
         stylePaginator.textContent = `
-    .shiki-comments-pagination {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      margin: 1.5rem 0;
-      padding: 0.5rem 0.75rem;
-      background-color: transparent;
-      font-family: inherit;
-      font-size: 0.95rem;
-      color: ${STYLE_VARS.COLOR_TEXT?STYLE_VARS.COLOR_TEXT:'inherit'};
-    }
+        .shiki-comments-pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: ${STYLE_VARS.spacing.gap};
+            margin: ${STYLE_VARS.spacing.margin};
+            padding: ${STYLE_VARS.spacing.padding};
+            background-color: transparent;
+            font-family: inherit;
+            font-size: ${STYLE_VARS.typography.fontSize};
+            color: ${STYLE_VARS.colors.text};
+        }
 
-    .shiki-comments-pagination button {
-      opacity: ${STYLE_VARS.OPACITY};
-      appearance: none;
-      background-color: ${STYLE_VARS.PRIMARY_COLOR};
-      color: ${STYLE_VARS.COLOR_TEXT?STYLE_VARS.COLOR_TEXT:'inherit'};
-      border: 1px solid transparent;
-      border-radius: ${STYLE_VARS.BUTTON_RADIUS};
-      padding: 0.25em 0.6em;
-      font-size: 0.85rem;
-      line-height: 1.2;
-      cursor: pointer;
-      transition: background-color 0.2s ease, transform 0.15s ease;
-    }
+        .shiki-comments-pagination button {
+            opacity: ${STYLE_VARS.OPACITY};
+            appearance: none;
+            background-color: ${STYLE_VARS.colors.primary};
+            color: ${STYLE_VARS.colors.buttonText};
+            border: 1px solid transparent;
+            border-radius: ${STYLE_VARS.BUTTON_RADIUS};
+            padding: ${STYLE_VARS.spacing.buttonPadding};
+            font-size: ${STYLE_VARS.typography.buttonFontSize};
+            line-height: ${STYLE_VARS.typography.lineHeight};
+            cursor: pointer;
+            transition: ${STYLE_VARS.transitions.button};
+        }
 
-    .shiki-comments-pagination button:hover:not(:disabled) {
-      background-color: ${STYLE_VARS.PRIMARY_COLOR_HOVER};
-      transform: translateY(-1px);
-    }
+        .shiki-comments-pagination button:hover:not(:disabled) {
+            background-color: ${STYLE_VARS.colors.primaryHover};
+            transform: ${STYLE_VARS.transitions.hoverTransform};
+        }
 
-    .shiki-comments-pagination input {
-      width: ${STYLE_VARS.INPUT_WIDTH};
-      text-align: center;
-      padding: 0.25em 0.4em;
-      border: 1px solid ${STYLE_VARS.INPUT_BORDER};
-      border-radius: ${STYLE_VARS.BUTTON_RADIUS};
-      font-size: 0.85rem;
-      background-color: ${STYLE_VARS.INPUT_BG};
-      color: inherit;
-      opacity: ${STYLE_VARS.OPACITY};
-    }
+        .shiki-comments-pagination input {
+            width: ${STYLE_VARS.INPUT_WIDTH};
+            text-align: center;
+            padding: ${STYLE_VARS.spacing.inputPadding};
+            border: 1px solid ${STYLE_VARS.colors.inputBorder};
+            border-radius: ${STYLE_VARS.BUTTON_RADIUS};
+            font-size: ${STYLE_VARS.typography.buttonFontSize};
+            background-color: ${STYLE_VARS.colors.inputBg};
+            color: inherit;
+            opacity: ${STYLE_VARS.OPACITY};
+        }
 
-    .page-info {
-      font-size: 0.8rem;
-      opacity: ${STYLE_VARS.OPACITY};
-      margin: 0 0.5rem;
-    }
-  `;
+        .page-info {
+            font-size: ${STYLE_VARS.typography.infoFontSize};
+            opacity: ${STYLE_VARS.OPACITY};
+            margin: 0 ${STYLE_VARS.spacing.gap};
+        }
+    `;
         document.head.appendChild(stylePaginator);
     }
 
+    // Инициализация
+    initStyles();
+    addStylesPaginator();
     function addStyles () {
         // Создаем элемент style
         const styleElement = document.createElement('style');
@@ -160,7 +206,7 @@
         // Добавляем в head документа
         document.head.appendChild(styleElement);
     }
-    addStylesPaginator();
+
     if (CustomView) {
         addStyles();
     }
