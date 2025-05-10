@@ -1,4 +1,4 @@
-## Скрипт предназначен для замены стандартного блока комментариев на сайте shikimori.one на вариант с пагинацией
+# Скрипт предназначен для замены стандартного блока комментариев на сайте shikimori.one на вариант с пагинацией
 
 Установите расширение Tampermonkey:  
 Для Chrome: [Chrome Web Store](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)  
@@ -15,7 +15,16 @@ ___
 ![image](https://github.com/user-attachments/assets/8a28816f-64f0-4bd1-b579-591cd47ca161)  
 ___
 И вставьте скипт в редактор  
-![image](https://github.com/user-attachments/assets/738dfcf3-dd49-4287-ba64-6f8d788f1edb)
+![image](https://github.com/user-attachments/assets/ac0ae7bc-c5c7-4591-bd72-2371fbfedd13)  
+___
+## Стандартный вид пагинатора  
+![image](https://github.com/user-attachments/assets/1ed561a6-4071-4f0c-8678-e11f4d05ccfe)  
+___
+## Кастомизация пагинатора и основные переменные конфига описаны в коде  
+![image](https://github.com/user-attachments/assets/81822403-8ab6-4164-b594-863ea476b8b8)  
+
+
+
 
 
 
