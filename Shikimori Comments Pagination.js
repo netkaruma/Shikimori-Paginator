@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Shikimori Comments Pagination
 // @namespace    http://tampermonkey.net/
-// @version      1.5
+// @version      1.6
 // @description  Пагинация комментариев
 // @author       karuma
 // @license      MIT
@@ -21,51 +21,93 @@
     const EnableScroll = true; // true/false - после после обновления блока комментариев скролл до пагинатора
     const CustomView = true; // Кастомный вид спойлеров/картинок
 
+    /*
+     Стилевые переменные в RGBA формате
+     rgba(90, 120, 160, 0.25) Где первые 3 значения количество Красного/Зеленого/Синего в диапазоне от 0 до 255
+     а 3 значение прозрачность элемента от 0 до 1, где 1 - это полностью не прозрачный
+     */
+    const STYLE_VARS = {
+
+        OPACITY: '0.8', // Прозрачность текста в пагинаторе
+        COLOR_TEXT:'',// Цвет текста в пагинаторе (По умолчанию такой же как на всей остольной странице)
+        // Основные цвета кнопок
+        PRIMARY_COLOR: 'rgba(90, 120, 160, 0.25)', // Цвет кнопок и прозрачность
+        PRIMARY_COLOR_HOVER: 'rgba(90, 120, 160, 0.25)', // Цвет и прозрачность кнопок  при наведении
+
+        // Цвета поля ввода
+        INPUT_BG: 'rgba(255, 255, 255, 0.1)', // Фон поля ввода
+        INPUT_BORDER: 'rgba(150, 150, 150, 0.3)', // Граница поля ввода
+
+        // Размеры кнопок
+        BUTTON_RADIUS: '0.375rem', // Радиус скругления кнопок
+        INPUT_WIDTH: '3.2rem' // Ширина поля ввода
+    };
+
     GM_addStyle(`
-        .shiki-comments-pagination {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin: 20px 0;
-            gap: 10px;
-            padding: 10px;
-            border-radius: 4px;
-        }
-        .shiki-comments-pagination button {
-            background: #579;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            padding: 5px 10px;
-            cursor: pointer;
-            min-width: 30px;
-            transition: background 0.2s;
-        }
-        .shiki-comments-pagination button:hover {
-            background: #467;
-        }
-        .shiki-comments-pagination button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-        .shiki-comments-pagination input {
-            width: 60px;
-            text-align: center;
-            padding: 5px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        .shiki-comments-pagination .page-info {
-            margin: 0 10px;
-            font-size: 14px;
-        }
         .shiki-comments-loading {
             opacity: 0.7;
             pointer-events: none;
         }
     `);
-    function addStyles () {
 
+    function addStylesPaginator() {
+        const stylePaginator = document.createElement('style');
+        stylePaginator.textContent = `
+    .shiki-comments-pagination {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin: 1.5rem 0;
+      padding: 0.5rem 0.75rem;
+      background-color: transparent;
+      font-family: inherit;
+      font-size: 0.95rem;
+      color: ${STYLE_VARS.COLOR_TEXT?STYLE_VARS.COLOR_TEXT:'inherit'};
+    }
+
+    .shiki-comments-pagination button {
+      opacity: ${STYLE_VARS.OPACITY};
+      appearance: none;
+      background-color: ${STYLE_VARS.PRIMARY_COLOR};
+      color: ${STYLE_VARS.COLOR_TEXT?STYLE_VARS.COLOR_TEXT:'inherit'};
+      border: 1px solid transparent;
+      border-radius: ${STYLE_VARS.BUTTON_RADIUS};
+      padding: 0.25em 0.6em;
+      font-size: 0.85rem;
+      line-height: 1.2;
+      cursor: pointer;
+      transition: background-color 0.2s ease, transform 0.15s ease;
+    }
+
+    .shiki-comments-pagination button:hover:not(:disabled) {
+      background-color: ${STYLE_VARS.PRIMARY_COLOR_HOVER};
+      transform: translateY(-1px);
+    }
+
+    .shiki-comments-pagination input {
+      width: ${STYLE_VARS.INPUT_WIDTH};
+      text-align: center;
+      padding: 0.25em 0.4em;
+      border: 1px solid ${STYLE_VARS.INPUT_BORDER};
+      border-radius: ${STYLE_VARS.BUTTON_RADIUS};
+      font-size: 0.85rem;
+      background-color: ${STYLE_VARS.INPUT_BG};
+      color: inherit;
+      opacity: ${STYLE_VARS.OPACITY};
+    }
+
+    .page-info {
+      font-size: 0.8rem;
+      opacity: ${STYLE_VARS.OPACITY};
+      margin: 0 0.5rem;
+    }
+  `;
+        document.head.appendChild(stylePaginator);
+    }
+
+    function addStyles () {
         // Создаем элемент style
         const styleElement = document.createElement('style');
 
@@ -118,9 +160,12 @@
         // Добавляем в head документа
         document.head.appendChild(styleElement);
     }
+    addStylesPaginator();
     if (CustomView) {
         addStyles();
     }
+
+
     /* ========== ОБРАБОТКА СПОЙЛЕРОВ И УДАЛЕНИЯ ========== */
 
     // Функция для раскрытия/закрытия inline-спойлеров (текстовых)
@@ -555,7 +600,6 @@
             // Создаем новый элемент пагинации
             this.pagination = document.createElement('div');
             this.pagination.className = 'shiki-comments-pagination';
-            this.pagination.classList.add('l-page');
             this.pagination.innerHTML = `
                 <button class="prev-page">&lt; Назад</button>
                 <span class="page-info">Страница ${this.currentPage} из ${this.totalPages}</span>
