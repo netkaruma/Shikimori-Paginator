@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Shikimori Comments Pagination
 // @namespace    http://tampermonkey.net/
-// @version      1.7
+// @version      1.8
 // @description  Пагинация комментариев
 // @author       karuma
 // @license      MIT
@@ -16,9 +16,10 @@
 
     // CONFIG ---------------------------------------------------------------------------------------
 
-    const COMMENTS_PER_PAGE = 5; // Число комментариев на странице
+    const COMMENTS_PER_PAGE = 15; // Число комментариев на странице
     const CHECK_INTERVAL = 500; // Частота проверки элементов на странице (Не ставить сликшом маленький)
     const TimeoutToScroll = 200; // Задержка перед скролом к пагинатору. (После нажатия на вперед/назад)
+    const BackButtonScroll = true; // Прокрутка к началу после нажатия на "назад" (Удобнее читать комментарии по порядку)
     const EnableScroll = true; // true/false - после после обновления блока комментариев скролл до пагинатора
     const CustomView = true; // Кастомный вид спойлеров/картинок
 
@@ -637,12 +638,7 @@
             if (this.pagination) {
                 this.pagination.remove(); // Удаляем старую пагинацию
             }
-            function ScrollToPagination () {
-                this.pagination.scrollIntoView({
-                    behavior: 'smooth', // Плавная прокрутка
-                    block: 'start'// Выравнивание по верхнему краю элемента
-                });
-            }
+            
             // Создаем новый элемент пагинации
             this.pagination = document.createElement('div');
             this.pagination.className = 'shiki-comments-pagination';
@@ -670,16 +666,20 @@
 
 
 
-            function ScrollIntoPagination(container) {
+            function ScrollIntoElement(container,position='bottom') {
                 if (EnableScroll) {
                     setTimeout(() => {
+                        let scrollPosition = 0;
                         // Получаем позицию элемента относительно документа
                         const elementRect = container.getBoundingClientRect();
-                        const scrollPosition = elementRect.bottom + window.pageYOffset - window.innerHeight;
+                        if (position === 'bottom'){
+                         scrollPosition = elementRect.bottom + window.pageYOffset - window.innerHeight + 80;
+                        }
+                        else {scrollPosition = elementRect.top + window.pageYOffset - 80;}
 
-                        // Добавляем отступ -100px сверху
+                        // Добавляем отступ
                         window.scrollTo({
-                            top: scrollPosition - (-80),
+                            top: scrollPosition,
                             behavior: 'instant' // или 'smooth' для плавной прокрутки
                         });
                     },TimeoutToScroll) // Задержка
@@ -691,7 +691,12 @@
                     this.currentPage--;
                     await this.loadComments();
                     this.renderPagination(); // Обновляем отображение
-                    ScrollIntoPagination(this.pagination);
+                    if (BackButtonScroll){
+                        ScrollIntoElement(this.container, 'top');
+                    }
+                    else{
+                        ScrollIntoElement(this.pagination);
+                    }
                 }
             });
 
@@ -701,7 +706,7 @@
                     this.currentPage++;
                     await this.loadComments();
                     this.renderPagination();
-                    ScrollIntoPagination(this.pagination);
+                    ScrollIntoElement(this.pagination);
                 }
             });
 
@@ -711,7 +716,7 @@
                     this.currentPage = newPage;
                     await this.loadComments();
                     this.renderPagination();
-                    ScrollIntoPagination(this.pagination);
+                    ScrollIntoElement(this.pagination);
                 }
             });
         }
