@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Shikimori Comments Pagination
 // @namespace    http://tampermonkey.net/
-// @version      1.8
+// @version      1.8.1
 // @description  Пагинация комментариев
 // @author       karuma
 // @license      MIT
@@ -18,8 +18,9 @@
 
     const COMMENTS_PER_PAGE = 15; // Число комментариев на странице
     const CHECK_INTERVAL = 500; // Частота проверки элементов на странице (Не ставить сликшом маленький)
-    const TimeoutToScroll = 200; // Задержка перед скролом к пагинатору. (После нажатия на вперед/назад)
+    const TimeoutToScroll = 400; // Задержка перед скролом к пагинатору. (После нажатия на вперед/назад)
     const BackButtonScroll = true; // Прокрутка к началу после нажатия на "назад" (Удобнее читать комментарии по порядку)
+    const ScrollAnimation = 'instant';// 'instant' для мгновенной или 'smooth' для плавной прокрутки
     const EnableScroll = true; // true/false - после после обновления блока комментариев скролл до пагинатора
     const CustomView = true; // Кастомный вид спойлеров/картинок
 
@@ -680,7 +681,7 @@
                         // Добавляем отступ
                         window.scrollTo({
                             top: scrollPosition,
-                            behavior: 'instant' // или 'smooth' для плавной прокрутки
+                            behavior: ScrollAnimation
                         });
                     },TimeoutToScroll) // Задержка
                 }
